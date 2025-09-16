@@ -1,0 +1,90 @@
+{
+    "train_batch_size": 96,
+    "train_micro_batch_size_per_gpu": 32,
+    "gradient_accumulation_steps": 3,
+    "gradient_clipping": 1.0,
+    
+    "optimizer": {
+      "type": "AdamW",
+      "params": {
+        "lr": 2e-5,
+        "betas": [0.8, 0.999],
+        "eps": 1e-8,
+        "weight_decay": 0.01
+      }
+    },
+  
+    "discriminator_optimizer": {
+      "type": "AdamW",
+      "params": {
+        "lr": 4e-5,
+        "betas": [0.8, 0.999],
+        "eps": 1e-8,
+        "weight_decay": 0.01
+      }
+    },
+    
+    "scheduler": {
+      "type": "WarmupCosineLR",
+      "params": {
+        "total_num_steps":80000,
+        "warmup_min_ratio": 0,
+        "warmup_num_steps": 4000,
+        "cos_min_ratio": 0.10
+  
+      }
+    },
+  
+    "discriminator_scheduler": {
+      "type": "WarmupCosineLR",
+      "params": {
+        "total_num_steps":80000,
+        "warmup_min_ratio": 0,
+        "warmup_num_steps": 4000,
+        "cos_min_ratio": 0.10 
+      }
+    },
+  
+    
+    "zero_optimization": {
+      "stage": 2,
+      "offload_optimizer": {
+        "device": "cpu",
+        "pin_memory": true
+      },
+      "allgather_partitions": true,
+      "allgather_bucket_size": 2e8,
+      "overlap_comm": true,
+      "reduce_scatter": true,
+      "reduce_bucket_size": 2e8,
+      "contiguous_gradients": true,
+      "ignore_unused_parameters": true,
+      "gather_16bit_weights_on_model_save": false
+    },
+    
+    "bf16": {
+     "enabled": false
+    }, 
+  
+    "activation_checkpointing": {
+      "partition_activations": true,
+      "cpu_checkpointing": true,
+      "contiguous_memory_optimization": false,
+      "number_checkpoints": 4,
+      "synchronize_checkpoint_boundary": true,
+      "profile": false
+    },
+  
+    "tensorboard": {
+      "enabled": true,
+      "output_path": "./logs/deepspeed_tensorboard_posttrain/",
+      "job_name": "simwhisper_codec_posttrain"
+    },
+  
+    "wall_clock_breakdown": false,
+    "communication_data_type": "fp32",
+    "steps_per_print": 100,
+    "dump_state": false,
+    "load_universal_checkpoint": false,
+    "nan_checking": true
+  }

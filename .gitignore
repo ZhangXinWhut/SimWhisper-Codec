@@ -1,0 +1,4 @@
+audiocodec/trainer/
+audiocodec/config/
+audiocodec/scripts/
+audiocodec/discriminator.py

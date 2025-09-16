@@ -1,0 +1,202 @@
+# ZX-Tokenizer 后训练配置文件
+# =========================
+
+# 基础配置
+sample_rate: &sample_rate 16000
+checkpoint_dir: "outputs/posttrain/checkpoints"
+log_dir: "logs/posttrain"
+
+# 数据集配置
+train_ds_meta:
+  - manifest_filepath: "/root/autodl-tmp/WhisperCodec/data/manifests/librispeech/librispeech_train_combined.jsonl"
+    weight: 0.8
+  - manifest_filepath: "/root/autodl-tmp/WhisperCodec/data/manifests/thchs30/thchs30_train.jsonl"
+    weight: 0.2
+
+val_ds_meta:
+  - manifest_filepath: "/root/autodl-tmp/WhisperCodec/data/manifests/librispeech/librispeech_dev_clean.jsonl"
+  - manifest_filepath: "/root/autodl-tmp/WhisperCodec/data/manifests/thchs30/thchs30_valid.jsonl"
+
+test_ds_meta:
+  - manifest_filepath: "/root/autodl-tmp/WhisperCodec/data/manifests/librispeech/librispeech_test_clean.jsonl"
+  #- manifest_filepath: "/root/autodl-tmp/WhisperCodec/data/manifests/thchs30/thchs30_test.jsonl"
+
+# 加权采样配置
+weighted_sampling_steps_per_epoch: 3063  # null表示拼接所有数据集，数字表示加权采样步数
+
+# Probability of updating the discriminator during each training step
+# For example, update the discriminator 1/2 times (1 update for every 2 batches)
+disc_updates_per_period: 1
+disc_update_period: 4
+
+# 基础配置
+batch_size: 32  # 训练批次大小
+
+# 训练时音频片段长度配置
+train_n_samples: 96000  # 训练时随机切分的采样点数 (96000=6秒@16kHz)
+
+# 训练、验证、测试数据加载器配置
+train_ds:
+  dataset:
+    _target_: audiocodec.trainer.dataset.AudioCodecDataset
+    dataset_meta: ${train_ds_meta}
+    weighted_sampling_steps_per_epoch: ${weighted_sampling_steps_per_epoch}
+    sample_rate: *sample_rate
+    min_duration: 0.4 # seconds
+    max_duration: null
+    n_samples: ${train_n_samples} # 训练时随机切分的采样点数 (96000=6秒@16kHz)
+    stage: train
+
+  dataloader_params:
+    batch_size: ${batch_size}
+    drop_last: true
+    num_workers: 8
+
+validation_ds:
+  dataset:
+    _target_: audiocodec.trainer.dataset.AudioCodecDataset
+    dataset_meta: ${val_ds_meta}
+    sample_rate: *sample_rate
+    n_samples: null
+    min_duration: null
+    max_duration: null
+    trunc_duration_s: 10.0 # 验证时只使用前10秒音频计算损失
+    stage: validation
+
+  dataloader_params:
+    batch_size: 4
+    num_workers: 4
+
+test_ds:
+  dataset:
+    _target_: audiocodec.trainer.dataset.AudioCodecDataset
+    dataset_meta: ${test_ds_meta}
+    sample_rate: *sample_rate
+    n_samples: null
+    min_duration: null
+    max_duration: null
+    trunc_duration_s: null # 测试时使用完整音频
+    stage: test
+
+  dataloader_params:
+    batch_size: 1
+    num_workers: 4
+
+model:
+  sample_rate: *sample_rate
+
+  # 特征提取器
+  feature_extractor:
+    chunk_length: 30
+    feature_size: 80
+    sampling_rate: *sample_rate
+    hop_length: 160
+    n_fft: 400
+    n_samples: 480000
+    nb_max_frames: 3000
+    padding_side: "right"
+    padding_value: 0.0
+    return_attention_mask: false
+
+  # 声学编码器（从whisper encoder权重初始化）
+  acoustic_encoder:
+    num_mel_bins: 80
+    sampling_rate: *sample_rate
+    hop_length: 160
+    stride_size: 2
+    kernel_size: 3
+    d_model: 768
+    scale_embedding: false
+    max_audio_seconds: 30
+    encoder_layers: 12
+    encoder_attention_heads: 12
+    encoder_ffn_dim: 3072
+    is_acoustic: true
+    freeze: true
+
+  # 下采样
+  downsample:
+    in_dim: 768
+    out_dim: 32
+    stack_factor: 4
+
+  # GroupFSQ量化器
+  quantizer:
+    num_groups: 8
+    num_levels_per_group: [8, 7, 6, 6]
+    eps: 0.001
+
+  # 上采样
+  upsample:
+    in_dim: 32
+    out_dim: 768
+    up_factor: 4
+
+  # 声学解码器
+  acoustic_decoder:
+    num_mel_bins: 80
+    sampling_rate: *sample_rate
+    hop_length: 160
+    stride_size: 2
+    kernel_size: 3
+    d_model: 768
+    scale_embedding: false
+    max_audio_seconds: 30
+    decoder_layers: 12
+    decoder_attention_heads: 12
+    decoder_ffn_dim: 3072
+    activation_function: "gelu"
+
+  # Vocos生成器
+  vocos:
+    input_channels: 80
+    dim: 512
+    intermediate_dim: 4096
+    num_layers: 24
+    n_fft: 640
+    hop_size: 160
+    padding: "same"
+
+# 训练配置
+training:
+  max_epochs: 50  # 最大训练轮数
+  pretrained_checkpoint: "outputs/posttrain/checkpoints"
+  pretrained_tag: "latest"
+  deepspeed_config: "config/deepspeed_posttrain.json"
+
+# 损失函数配置（与预训练相同参数）
+loss:
+  lambda_feat: 1.0    # 特征匹配损失权重
+  lambda_adv: 1.0     # 对抗损失权重
+  mel_loss_weights: [1, 1, 1, 1, 1, 45, 1]  # MultiScaleL1SpecLoss各尺度权重，第6个尺度(1024)为45
+
+# 评估配置
+evaluation:
+  validation:
+    max_batches: 1000  # 验证时最大批次数
+  audio_generation:
+    max_samples_per_epoch: 1  # 每epoch保存的音频样本数
+  test_set:
+    enabled: true  # 是否启用测试集评估
+    save_audio: true  # 测试时是否保存音频样本
+
+# 检查点管理
+checkpoint:
+  keep_n: 5  # 保留最新的5个检查点
+
+# 智能模型选择配置
+smart_model_selection:
+  enabled: true  # 是否启用智能模型选择
+
+  # 保存策略配置
+  save_strategy:
+    early_phase_epochs: 5  # 早期阶段结束epoch (1-15)
+    mid_phase_epochs: 10   # 中期阶段结束epoch (16-60)
+    early_save_freq: 2      # 早期保存频率（每5个epoch保存一次）
+    mid_save_freq: 2        # 中期保存频率（每2个epoch保存一次）
+    late_save_freq: 1       # 后期保存频率（每1个epoch保存一次）
+
+  # 最佳模型选择配置
+  best_model_selection:
+    start_epoch: 5  # 从哪个epoch开始选择最佳模型
+    improvement_threshold: 0.005  # 改善阈值 (0.5%)
