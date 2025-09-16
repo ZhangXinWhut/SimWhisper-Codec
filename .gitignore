@@ -1,4 +1,5 @@
 audiocodec/trainer/
-audiocodec/config/
-audiocodec/scripts/
-audiocodec/discriminator.py
+config/
+scripts/
+audiocodec/discriminators.py
+.DS_Store
