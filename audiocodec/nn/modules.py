@@ -1,3 +1,9 @@
+"""
+Copied and modified from
+https://github.com/gyt1145028706/XY-Tokenizer/blob/master/xy_tokenizer/nn/modules.py
+
+"""
+
 import torch
 import numpy as np
 import math
@@ -477,109 +483,110 @@ class ResBlock(nn.Module):
     def forward(self, x):
         return x + self.block(x)
 
-class FrameStackDownConv(nn.Module):
-    """Optimized version: smoother dimensional transitions + improved temporal modeling"""
-    def __init__(self, in_dim=768, out_dim=32, stack_factor=4):
+# class FrameStackDownConv(nn.Module):
+
+# class UpConv(nn.Module):
+
+# Define Transformer encoder containing multiple Transformer layers for feature extraction and transformation
+class Transformer(nn.Module):
+    def __init__(
+            self, 
+            input_dim=1280,  # Input feature dimension
+            d_model=1280,  # Model's hidden state dimension (embedding dimension)
+            output_dim=1280,  # Output feature dimension
+            max_source_positions=1500,  # Maximum sequence length for positional embedding
+            encoder_layers=32,  # Transformer encoder layer number
+            encoder_attention_heads=20,  # Attention head number for each Transformer layer
+            encoder_ffn_dim=5120,  # Intermediate dimension for feedforward network
+            activation_function="gelu",  # Activation function type, default GELU
+            attn_type="varlen"  # Attention mechanism type
+    ):
         super().__init__()
-        self.stack_factor = stack_factor
-        stacked_dim = in_dim * self.stack_factor  # 3072
-        
-        # More gradual dimensional reduction: 3072->1536->768->384->128->32
-        self.pre_conv = nn.Conv1d(stacked_dim, 1536, kernel_size=3, padding=1)
-        
-        self.down_stack = nn.Sequential(
-            ResBlock(1536, dilation=1),
-            nn.Conv1d(1536, 768, kernel_size=3, padding=1),
-            Snake1d(768),
-            
-            ResBlock(768, dilation=3),  
-            nn.Conv1d(768, 384, kernel_size=3, padding=1),
-            Snake1d(384),
-            
-            ResBlock(384, dilation=5),
-            nn.Conv1d(384, 128, kernel_size=3, padding=1), 
-            Snake1d(128),
-            
-            ResBlock(128, dilation=9),
-            nn.Conv1d(128, out_dim, kernel_size=3, padding=1),
-        )
-        
-        # Output layer norm for stability
-        self.output_norm = nn.LayerNorm(out_dim)
+        self.input_dim = input_dim  # Save input dimension
+        self.d_model = d_model  # Save hidden state dimension
+        self.output_dim = output_dim  # Save output dimension
+        self.max_source_positions = max_source_positions  # Save maximum sequence length
 
-    def forward(self, x, input_length):
-        B, D, T = x.shape
-        output_length = (input_length + self.stack_factor - 1) // self.stack_factor
+        # Register positional embedding buffer, using sine function to generate, shape (max_source_positions, d_model)
+        self.register_buffer("positional_embedding", sinusoids(self.max_source_positions, d_model))
         
-        # Frame stacking
-        T_padded = ((T + self.stack_factor - 1) // self.stack_factor) * self.stack_factor
-        if T < T_padded:
-            x = F.pad(x, (0, T_padded - T))
+        # Create Transformer encoder layer list, each layer contains attention mechanism and feedforward network
+        self.layers = nn.ModuleList([
+            OmniWhisperTransformerLayer(
+                activation_function=activation_function, 
+                d_model=d_model, 
+                attention_heads=encoder_attention_heads, 
+                ffn_dim=encoder_ffn_dim, 
+                causal=False,  # Encoder does not need causal attention
+                attn_type=attn_type  # Pass attention type
+            ) for _ in range(encoder_layers)
+        ])
         
-        x = rearrange(x, 'b d (t s) -> b (d s) t', s=self.stack_factor)
-        
-        # Downsampling
-        z = self.pre_conv(x)
-        z = self.down_stack(z)
-        
-        # Apply LayerNorm
-        z = rearrange(z, 'b d t -> b t d')
-        z = self.output_norm(z)
-        z = rearrange(z, 'b t d -> b d t')
-        
-        return z, output_length
+        # Last layer normalization for stable output
+        self.layer_norm = nn.LayerNorm(d_model)
 
-class UpConv(nn.Module):
-    """Optimized version: match downsampling dimensional changes"""
-    def __init__(self, in_dim=32, out_dim=768, up_factor=4):
-        super().__init__()
-        if not (up_factor > 0 and (up_factor & (up_factor - 1)) == 0):
-            raise ValueError(f"up_factor must be a power of 2, got {up_factor}")
-        
-        self.up_factor = up_factor
-        self.in_dim = in_dim
-        self.out_dim = out_dim
-        
-        # Preprocessing + dimension expansion: 32->128->384->768
-        self.pre_conv = nn.Conv1d(in_dim, 128, kernel_size=3, padding=1)
-        
-        # First 2x upsampling stage: 128->384  
-        self.up_stage1 = nn.Sequential(
-            nn.Upsample(scale_factor=2, mode='nearest'),
-            nn.Conv1d(128, 384, kernel_size=3, padding=1),
-            ResBlock(384, dilation=1),
-            ResBlock(384, dilation=5)
-        )
-        
-        # Second 2x upsampling stage: 384->768
-        self.up_stage2 = nn.Sequential(
-            nn.Upsample(scale_factor=2, mode='nearest'), 
-            nn.Conv1d(384, 768, kernel_size=3, padding=1),
-            ResBlock(768, dilation=1),
-            ResBlock(768, dilation=3)
-        )
-        
-        # Final adjustment layer
-        self.final_conv = nn.Sequential(
-            Snake1d(768),
-            nn.Conv1d(768, out_dim, kernel_size=3, padding=1)
-        )
 
-    def forward(self, z_q, input_len=None):
-        # 32 -> 128
-        y = self.pre_conv(z_q)
+    def forward(self, input_features: torch.Tensor, input_length: torch.Tensor, output_hidden_states: bool = False):
+        """
+        Forward propagation function to convert input features through Transformer layer to hidden state representation
         
-        # 128 -> 384 (2x upsampling)
-        y = self.up_stage1(y)
+        Parameters:
+            input_features (torch.Tensor): Input features, shape [bsz, input_dim, seq_len] (B, input_dim, T)
+            input_length (torch.Tensor): Input sequence length for each sample, shape [bsz]
+            output_hidden_states (bool, optional): Whether to return hidden states for each layer, default False
         
-        # 384 -> 768 (2x upsampling)  
-        y = self.up_stage2(y)
+        Returns:
+            if output_hidden_states is False:
+                hidden_states (torch.Tensor): Encoded hidden states, shape [bsz, output_dim, seq_len] (B, output_dim, T)
+                output_length (torch.Tensor): Output sequence length for each sample, shape [bsz]
+            else:
+                hidden_states (torch.Tensor): Encoded hidden states, shape [bsz, output_dim, seq_len] (B, output_dim, T)
+                output_length (torch.Tensor): Output sequence length for each sample, shape [bsz]
+                hidden_states_all_layers (tuple): Tuple containing hidden states for each layer, each shape [bsz, seq_len, d_model]
+        """
+        # Output length is the same as input length, Transformer does not change sequence length
+        output_length = input_length.long()  # [bsz]
+
+        # Adjust input dimension order to [bsz, seq_len, d_model] for Transformer input
+        hidden_states = input_features.permute(0, 2, 1)  # [bsz, seq_len, d_model] (B, T, D)
         
-        # Final adjustment
-        y_out = self.final_conv(y)
+        # Get batch size and target sequence length
+        bsz, tgt_len, _ = hidden_states.size()
         
-        out_len = input_len * self.up_factor if input_len is not None else None
-        return y_out, out_len   
+        # According to current sequence length, take or use complete positional embedding
+        if tgt_len < self.positional_embedding.shape[0]:
+            current_positional_embedding = self.positional_embedding[:tgt_len]  # [tgt_len, d_model]
+        else:
+            current_positional_embedding = self.positional_embedding  # [max_source_positions, d_model]
+        
+        # Add input features to positional embedding, convert to float to avoid precision issues
+        hidden_states = (hidden_states.to(torch.float32) + current_positional_embedding).to(hidden_states.dtype)  # [bsz, seq_len, d_model]
+        
+        # Generate sequence mask for processing variable-length sequence
+        attention_mask = get_sequence_mask(hidden_states, output_length)  # [bsz, tgt_len, 1]
+        
+        # Initialize hidden states list for storing output for each layer (if needed)
+        hidden_states_all_layers = () if output_hidden_states else None
+        
+        # Process hidden states through Transformer encoder layer by layer
+        for encoder_layer in self.layers:
+            if output_hidden_states:
+                hidden_states_all_layers = hidden_states_all_layers + (hidden_states,)
+            hidden_states = encoder_layer(hidden_states, output_length)  # [bsz, seq_len, d_model]
+        
+        # Normalize hidden states
+        hidden_states = self.layer_norm(hidden_states)  # [bsz, seq_len, d_model]
+        if output_hidden_states:
+            hidden_states_all_layers = hidden_states_all_layers + (hidden_states,)
+        
+        # Use mask to zero out padding parts and ensure output only retains valid data
+        hidden_states = torch.where(attention_mask, hidden_states, 0)  # [bsz, seq_len, d_model]
+
+        if not output_hidden_states:
+            return hidden_states, output_length
+        else:
+            return hidden_states, output_length, hidden_states_all_layers
+        
 
 def safe_log(x: torch.Tensor, clip_val: float = 1e-7) -> torch.Tensor:
     """

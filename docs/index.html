@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SimWhisper-Codec Demo</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f5f5f5;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .panel {
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        /* Header Panel */
+        .header-panel {
+            text-align: center;
+        }
+
+        .title {
+            font-size: 2.5rem;
+            font-weight: 300;
+            color: #2c3e50;
+            margin-bottom: 20px;
+        }
+
+        .links {
+            margin: 20px 0;
+        }
+
+        .links a {
+            color: #3498db;
+            text-decoration: none;
+            margin: 0 10px;
+            padding: 8px 16px;
+            border: 1px solid #3498db;
+            border-radius: 5px;
+            transition: all 0.3s ease;
+        }
+
+        .links a:hover {
+            background-color: #3498db;
+            color: white;
+        }
+
+        .abstract-section {
+            margin-top: 40px;
+        }
+
+        .abstract-title {
+            font-size: 2rem;
+            text-align: center;
+            margin-bottom: 30px;
+            color: #2c3e50;
+        }
+
+        .model-architecture {
+            text-align: center;
+            margin: 30px 0;
+            padding: 20px;
+            background-color: #f8f9fa;
+            border-radius: 8px;
+        }
+
+        .architecture-placeholder {
+            width: 100%;
+            height: 300px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 1.2rem;
+            margin-bottom: 20px;
+        }
+
+        .abstract-text {
+            text-align: justify;
+            font-size: 1rem;
+            line-height: 1.8;
+            color: #555;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        /* Audio Samples Panel */
+        .samples-title {
+            font-size: 2rem;
+            text-align: center;
+            margin-bottom: 30px;
+            color: #2c3e50;
+        }
+
+        .audio-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        .audio-table th {
+            background-color: #34495e;
+            color: white;
+            padding: 15px 10px;
+            text-align: center;
+            font-weight: 500;
+        }
+
+        .audio-table th:first-child {
+            width: 25%;
+        }
+
+        .audio-table th:not(:first-child) {
+            width: 18.75%;
+        }
+
+        .audio-table td {
+            padding: 15px 10px;
+            text-align: center;
+            border-bottom: 1px solid #eee;
+            vertical-align: middle;
+        }
+
+        .audio-table td:first-child {
+            width: 25%;
+        }
+
+        .audio-table td:not(:first-child) {
+            width: 18.75%;
+        }
+
+        .audio-table tr:nth-child(even) {
+            background-color: #f8f9fa;
+        }
+
+        .audio-table tr:hover {
+            background-color: #e8f4f8;
+        }
+
+        .sample-name {
+            font-weight: 600;
+            color: #2c3e50;
+        }
+
+        .ours {
+            background-color: #e8f5e8 !important;
+            font-weight: 600;
+        }
+
+        .audio-player {
+            width: 200px;
+            height: 32px;
+        }
+
+        .audio-controls {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+            min-height: 60px;
+        }
+
+        .play-button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .play-button:hover {
+            background-color: #2980b9;
+            transform: scale(1.1);
+        }
+
+        .duration {
+            font-size: 0.8rem;
+            color: #666;
+        }
+
+        /* Responsive design */
+        @media (max-width: 768px) {
+            .title {
+                font-size: 1.8rem;
+            }
+            
+            .links a {
+                display: block;
+                margin: 5px 0;
+            }
+            
+            .audio-table {
+                font-size: 0.9rem;
+            }
+            
+            .audio-player {
+                width: 180px;
+            }
+
+            .clustering-metrics {
+                min-width: auto;
+                padding: 15px;
+            }
+
+            .clustering-metrics h3 {
+                font-size: 1.1rem;
+            }
+
+            .metric-row {
+                padding: 10px 15px;
+            }
+
+            .method-name, .ari-score {
+                font-size: 0.9rem;
+            }
+        }
+
+        .section-divider {
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #3498db, transparent);
+            margin: 40px 0;
+        }
+
+        /* Clustering Results Styles */
+        .clustering-results {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 30px;
+        }
+
+        .clustering-image-container {
+            text-align: center;
+            max-width: 100%;
+        }
+
+        .clustering-image {
+            max-width: 100%;
+            height: auto;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            border: 1px solid #e0e0e0;
+        }
+
+        .clustering-metrics {
+            background-color: #f8f9fa;
+            padding: 25px;
+            border-radius: 10px;
+            text-align: center;
+            min-width: 400px;
+        }
+
+        .clustering-metrics h3 {
+            margin-bottom: 20px;
+            color: #2c3e50;
+            font-size: 1.3rem;
+        }
+
+        .metrics-table {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .metric-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 20px;
+            background-color: white;
+            border-radius: 8px;
+            border: 1px solid #e0e0e0;
+        }
+
+        .metric-row.ours {
+            background-color: #e8f5e8;
+            border-color: #27ae60;
+            font-weight: 600;
+        }
+
+        .method-name {
+            font-size: 1rem;
+            color: #2c3e50;
+        }
+
+        .ours .method-name {
+            color: #27ae60;
+        }
+
+        .ari-score {
+            font-size: 1.1rem;
+            font-weight: bold;
+            color: #34495e;
+        }
+
+        .ours .ari-score {
+            color: #27ae60;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header Panel -->
+        <div class="panel header-panel">
+            <h1 class="title">Speaking Clearly: A Simplified Whisper-based Codec for Low-Bitrate Speech Coding</h1>
+            
+            <!--
+            <div class="links">
+                <a href="#" target="_blank">[paper]</a>
+                <a href="#" target="_blank">[code]</a>
+                <a href="#" target="_blank">[model checkpoints]</a>
+                <a href="#" target="_blank">[cite]</a>
+            </div>
+            -->
+
+            <div class="abstract-section">
+                <h2 class="abstract-title">Abstract</h2>
+                
+                <div class="model-architecture">
+                    <img src="assets/SimWhisper-Codec.png" alt="SimWhisper-Codec Model Architecture" style="max-width: 100%; height: auto; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);">
+                </div>
+
+                <div class="abstract-text">
+                    Speech codecs serve as bridges between continuous speech signals and large language models, yet face an inherent conflict between acoustic fidelity and semantic preservation. To mitigate this conflict, prevailing methods augment acoustic codecs with complex semantic supervision. We explore the opposite direction: a semantic-first approach that starts from a semantically-capable model and adapts it for high-fidelity acoustic reconstruction. Through empirical analysis, we discover that targeted architectural simplification can unlock the acoustic modeling potential of Whisper, a text-aligned Automatic Speech Recognition (ASR) model. Based on this finding, we propose SimWhisper-Codec, a novel codec that balances the semantic and acoustic preservation by leveraging a frozen, simplified Whisper encoder without requiring external supervision. Experimental results demonstrate that SimWhisper-Codec achieves superior performance in both semantic preservation and acoustic quality compared to semantically-supervised codecs such as Mimi Codec and SpeechTokenizer at similar bitrates, validating the effectiveness of our semantic-first approach.
+                </div>
+            </div>
+        </div>
+
+        <!-- HiFiGAN Reconstruction Samples Panel -->
+        <div class="panel">
+            <h2 class="samples-title">HiFiGAN Reconstruction Samples</h2>
+            <p style="text-align: center; margin-bottom: 20px; color: #666;">
+                Comparison of HiFiGAN vocoder trained on different feature encoders
+            </p>
+            
+            <table class="audio-table">
+                <thead>
+                    <tr>
+                        <th>Method</th>
+                        <th>Sample 1</th>
+                        <th>Sample 2</th>
+                        <th>Sample 3</th>
+                        <th>Sample 4</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="sample-name">Ground Truth</td>
+                        <td>
+                            <div class="audio-controls">
+                                <audio class="audio-player" controls>
+                                    <source src="assets/hifigan/gt_sample1.wav" type="audio/wav">
+                                </audio>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="audio-controls">
+                                <audio class="audio-player" controls>
+                                    <source src="assets/hifigan/gt_sample2.wav" type="audio/wav">
+                                </audio>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="audio-controls">
+                                <audio class="audio-player" controls>
+                                    <source src="assets/hifigan/gt_sample3.wav" type="audio/wav">
+                                </audio>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="audio-controls">
+                                <audio class="audio-player" controls>
+                                    <source src="assets/hifigan/gt_sample4.wav" type="audio/wav">
+                                </audio>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="sample-name">Whisper encoder</td>
+                        <td>
+                            <div class="audio-controls">
+                                <audio class="audio-player" controls>
+                                    <source src="assets/hifigan/whisper_sample1.wav" type="audio/wav">
+                                </audio>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="audio-controls">
+                                <audio class="audio-player" controls>
+                                    <source src="assets/hifigan/whisper_sample2.wav" type="audio/wav">
+                                </audio>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="audio-controls">
+                                <audio class="audio-player" controls>
+                                    <source src="assets/hifigan/whisper_sample3.wav" type="audio/wav">
+                                </audio>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="audio-controls">
+                                <audio class="audio-player" controls>
+                                    <source src="assets/hifigan/whisper_sample4.wav" type="audio/wav">
+                                </audio>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="sample-name">Whisper encoder (WO_APE)</td>
+                        <td>
+                            <div class="audio-controls">
+                                <audio class="audio-player" controls>
+                                    <source src="assets/hifigan/whisper_wo_ape_sample1.wav" type="audio/wav">
+                                </audio>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="audio-controls">
+                                <audio class="audio-player" controls>
+                                    <source src="assets/hifigan/whisper_wo_ape_sample2.wav" type="audio/wav">
+                                </audio>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="audio-controls">
+                                <audio class="audio-player" controls>
+                                    <source src="assets/hifigan/whisper_wo_ape_sample3.wav" type="audio/wav">
+                                </audio>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="audio-controls">
+                                <audio class="audio-player" controls>
+                                    <source src="assets/hifigan/whisper_wo_ape_sample4.wav" type="audio/wav">
+                                </audio>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="sample-name">Whisper encoder (WO_GELU)</td>
+                        <td>
+                            <div class="audio-controls">
+                                <audio class="audio-player" controls>
+                                    <source src="assets/hifigan/whisper_wo_gelu_sample1.wav" type="audio/wav">
+                                </audio>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="audio-controls">
+                                <audio class="audio-player" controls>
+                                    <source src="assets/hifigan/whisper_wo_gelu_sample2.wav" type="audio/wav">
+                                </audio>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="audio-controls">
+                                <audio class="audio-player" controls>
+                                    <source src="assets/hifigan/whisper_wo_gelu_sample3.wav" type="audio/wav">
+                                </audio>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="audio-controls">
+                                <audio class="audio-player" controls>
+                                    <source src="assets/hifigan/whisper_wo_gelu_sample4.wav" type="audio/wav">
+                                </audio>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr class="ours">
+                        <td class="sample-name">Whisper encoder (WO_GELU_APE)</td>
+                        <td>
+                            <div class="audio-controls">
+                                <audio class="audio-player" controls>
+                                    <source src="assets/hifigan/whisper_wo_gelu_ape_sample1.wav" type="audio/wav">
+                                </audio>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="audio-controls">
+                                <audio class="audio-player" controls>
+                                    <source src="assets/hifigan/whisper_wo_gelu_ape_sample2.wav" type="audio/wav">
+                                </audio>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="audio-controls">
+                                <audio class="audio-player" controls>
+                                    <source src="assets/hifigan/whisper_wo_gelu_ape_sample3.wav" type="audio/wav">
+                                </audio>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="audio-controls">
+                                <audio class="audio-player" controls>
+                                    <source src="assets/hifigan/whisper_wo_gelu_ape_sample4.wav" type="audio/wav">
+                                </audio>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="sample-name">Hubert</td>
+                        <td>
+                            <div class="audio-controls">
+                                <audio class="audio-player" controls>
+                                    <source src="assets/hifigan/hubert_sample1.wav" type="audio/wav">
+                                </audio>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="audio-controls">
+                                <audio class="audio-player" controls>
+                                    <source src="assets/hifigan/hubert_sample2.wav" type="audio/wav">
+                                </audio>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="audio-controls">
+                                <audio class="audio-player" controls>
+                                    <source src="assets/hifigan/hubert_sample3.wav" type="audio/wav">
+                                </audio>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="audio-controls">
+                                <audio class="audio-player" controls>
+                                    <source src="assets/hifigan/hubert_sample4.wav" type="audio/wav">
+                                </audio>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="sample-name">WavLM</td>
+                        <td>
+                            <div class="audio-controls">
+                                <audio class="audio-player" controls>
+                                    <source src="assets/hifigan/wavlm_sample1.wav" type="audio/wav">
+                                </audio>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="audio-controls">
+                                <audio class="audio-player" controls>
+                                    <source src="assets/hifigan/wavlm_sample2.wav" type="audio/wav">
+                                </audio>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="audio-controls">
+                                <audio class="audio-player" controls>
+                                    <source src="assets/hifigan/wavlm_sample3.wav" type="audio/wav">
+                                </audio>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="audio-controls">
+                                <audio class="audio-player" controls>
+                                    <source src="assets/hifigan/wavlm_sample4.wav" type="audio/wav">
+                                </audio>
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Speaker Clustering Experiments Panel -->
+        <div class="panel">
+            <h2 class="samples-title">Speaker Clustering Experiments</h2>
+            <p style="text-align: center; margin-bottom: 30px; color: #666;">
+                t-SNE visualization of final-layer embeddings from four encoders on LibriSpeech test-clean
+            </p>
+            
+            <div class="clustering-results">
+                <div class="clustering-image-container">
+                    <img src="assets/clustering_results.png" alt="Speaker Clustering t-SNE Results" class="clustering-image">
+                </div>
+                <!--
+                <div class="clustering-metrics">
+                    <h3>Adjusted Rand Index (ARI) Results</h3>
+                    <div class="metrics-table">
+                        <div class="metric-row ours">
+                            <span class="method-name">Simplified Whisper (Ours)</span>
+                            <span class="ari-score">0.533</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="method-name">Hubert</span>
+                            <span class="ari-score">0.192</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="method-name">WavLM</span>
+                            <span class="ari-score">0.057</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="method-name">Standard Whisper</span>
+                            <span class="ari-score">0.013</span>
+                        </div>
+                    </div>
+                </div>
+                -->
+            </div>
+            
+            <div style="margin-top: 30px; padding: 15px; background-color: #f8f9fa; border-radius: 8px; color: #666;">
+                <p><strong>Experiment Setup:</strong> t-SNE visualization of final-layer embeddings from four encoders on LibriSpeech test-clean with 5 utterances per speaker. 
+                Points are colored by ground-truth speaker identity. ARI measures clustering quality using k-means on the same embeddings (k=40).</p>
+                <p><strong>Results:</strong> Our <strong>Simplified Whisper</strong> achieves the highest ARI score (0.533), demonstrating the clearest speaker separation and superior speaker-discriminative representations compared to other methods.</p>
+            </div>
+        </div>
+
+        <!-- Codec Reconstruction Samples Panel -->
+        <div class="panel">
+            <h2 class="samples-title">Codec Reconstruction Samples</h2>
+            <p style="text-align: center; margin-bottom: 20px; color: #666;">
+                Comparison of different speech codecs on reconstruction quality
+            </p>
+            
+            <table class="audio-table">
+                <thead>
+                    <tr>
+                        <th>Method</th>
+                        <th>Sample 1</th>
+                        <th>Sample 2</th>
+                        <th>Sample 3</th>
+                        <th>Sample 4</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="sample-name">Ground Truth</td>
+                        <td>
+                            <div class="audio-controls">
+                                <audio class="audio-player" controls>
+                                    <source src="assets/codec/gt_sample1.wav" type="audio/wav">
+                                </audio>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="audio-controls">
+                                <audio class="audio-player" controls>
+                                    <source src="assets/codec/gt_sample2.wav" type="audio/wav">
+                                </audio>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="audio-controls">
+                                <audio class="audio-player" controls>
+                                    <source src="assets/codec/gt_sample3.wav" type="audio/wav">
+                                </audio>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="audio-controls">
+                                <audio class="audio-player" controls>
+                                    <source src="assets/codec/gt_sample4.wav" type="audio/wav">
+                                </audio>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr class="ours">
+                        <td class="sample-name">SimWhisper-Codec (Ours)</td>
+                        <td>
+                            <div class="audio-controls">
+                                <audio class="audio-player" controls>
+                                    <source src="assets/codec/simwhisper_sample1.wav" type="audio/wav">
+                                </audio>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="audio-controls">
+                                <audio class="audio-player" controls>
+                                    <source src="assets/codec/simwhisper_sample2.wav" type="audio/wav">
+                                </audio>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="audio-controls">
+                                <audio class="audio-player" controls>
+                                    <source src="assets/codec/simwhisper_sample3.wav" type="audio/wav">
+                                </audio>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="audio-controls">
+                                <audio class="audio-player" controls>
+                                    <source src="assets/codec/simwhisper_sample4.wav" type="audio/wav">
+                                </audio>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="sample-name">Xcodec2.0</td>
+                        <td>
+                            <div class="audio-controls">
+                                <audio class="audio-player" controls>
+                                    <source src="assets/codec/xcodec_sample1.wav" type="audio/wav">
+                                </audio>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="audio-controls">
+                                <audio class="audio-player" controls>
+                                    <source src="assets/codec/xcodec_sample2.wav" type="audio/wav">
+                                </audio>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="audio-controls">
+                                <audio class="audio-player" controls>
+                                    <source src="assets/codec/xcodec_sample3.wav" type="audio/wav">
+                                </audio>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="audio-controls">
+                                <audio class="audio-player" controls>
+                                    <source src="assets/codec/xcodec_sample4.wav" type="audio/wav">
+                                </audio>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="sample-name">SpeechTokenizer</td>
+                        <td>
+                            <div class="audio-controls">
+                                <audio class="audio-player" controls>
+                                    <source src="assets/codec/speechtokenizer_sample1.wav" type="audio/wav">
+                                </audio>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="audio-controls">
+                                <audio class="audio-player" controls>
+                                    <source src="assets/codec/speechtokenizer_sample2.wav" type="audio/wav">
+                                </audio>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="audio-controls">
+                                <audio class="audio-player" controls>
+                                    <source src="assets/codec/speechtokenizer_sample3.wav" type="audio/wav">
+                                </audio>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="audio-controls">
+                                <audio class="audio-player" controls>
+                                    <source src="assets/codec/speechtokenizer_sample4.wav" type="audio/wav">
+                                </audio>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="sample-name">Mimi</td>
+                        <td>
+                            <div class="audio-controls">
+                                <audio class="audio-player" controls>
+                                    <source src="assets/codec/mimi_sample1.wav" type="audio/wav">
+                                </audio>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="audio-controls">
+                                <audio class="audio-player" controls>
+                                    <source src="assets/codec/mimi_sample2.wav" type="audio/wav">
+                                </audio>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="audio-controls">
+                                <audio class="audio-player" controls>
+                                    <source src="assets/codec/mimi_sample3.wav" type="audio/wav">
+                                </audio>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="audio-controls">
+                                <audio class="audio-player" controls>
+                                    <source src="assets/codec/mimi_sample4.wav" type="audio/wav">
+                                </audio>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="sample-name">DAC</td>
+                        <td>
+                            <div class="audio-controls">
+                                <audio class="audio-player" controls>
+                                    <source src="assets/codec/dac_sample1.wav" type="audio/wav">
+                                </audio>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="audio-controls">
+                                <audio class="audio-player" controls>
+                                    <source src="assets/codec/dac_sample2.wav" type="audio/wav">
+                                </audio>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="audio-controls">
+                                <audio class="audio-player" controls>
+                                    <source src="assets/codec/dac_sample3.wav" type="audio/wav">
+                                </audio>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="audio-controls">
+                                <audio class="audio-player" controls>
+                                    <source src="assets/codec/dac_sample4.wav" type="audio/wav">
+                                </audio>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="sample-name">EnCodec</td>
+                        <td>
+                            <div class="audio-controls">
+                                <audio class="audio-player" controls>
+                                    <source src="assets/codec/encodec_sample1.wav" type="audio/wav">
+                                </audio>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="audio-controls">
+                                <audio class="audio-player" controls>
+                                    <source src="assets/codec/encodec_sample2.wav" type="audio/wav">
+                                </audio>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="audio-controls">
+                                <audio class="audio-player" controls>
+                                    <source src="assets/codec/encodec_sample3.wav" type="audio/wav">
+                                </audio>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="audio-controls">
+                                <audio class="audio-player" controls>
+                                    <source src="assets/codec/encodec_sample4.wav" type="audio/wav">
+                                </audio>
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</body>
+</html>

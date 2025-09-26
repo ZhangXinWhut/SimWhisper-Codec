@@ -1,0 +1,71 @@
+sample_rate: &sample_rate 16000
+
+generator_params:
+  sample_rate: *sample_rate
+
+  feature_extractor:
+      chunk_length: 30
+      feature_size: 80
+      hop_length: 160
+      n_fft: 400
+      n_samples: 480000
+      nb_max_frames: 3000
+      padding_side: right
+      padding_value: 0.0
+      return_attention_mask: false
+      sampling_rate: *sample_rate
+
+  ## Codec Args
+
+  ## acoustic 
+  acoustic_encoder:
+    num_mel_bins: 80
+    sampling_rate: *sample_rate
+    hop_length: 160
+    stride_size: 2
+    kernel_size: 3
+    d_model: 768
+    scale_embedding: false
+    max_audio_seconds: 30
+    encoder_layers: 12
+    encoder_attention_heads: 12
+    encoder_ffn_dim: 3072
+    is_acoustic: true
+    freeze: true
+      
+  downsample:
+    in_dim: 768
+    out_dim: 32
+    stack_factor: 4
+
+  quantizer:
+    num_groups: 8
+    num_levels_per_group: [8, 7, 6, 6]
+    eps: 0.001
+
+  upsample:
+    in_dim: 32
+    out_dim: 768
+    up_factor: 4
+  
+  acoustic_decoder:
+    num_mel_bins: 80
+    sampling_rate: *sample_rate
+    hop_length: 160
+    stride_size: 2
+    kernel_size: 3
+    d_model: 768
+    scale_embedding: false
+    max_audio_seconds: 30
+    decoder_layers: 12
+    decoder_attention_heads: 12
+    decoder_ffn_dim: 3072
+  
+  vocos:  # 100hz -> 16kHz
+    input_channels: 80
+    dim: 512
+    intermediate_dim: 4096
+    num_layers: 24
+    n_fft: 640
+    hop_size: 160
+    padding: "same"

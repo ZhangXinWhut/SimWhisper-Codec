@@ -1,9 +1,3 @@
-"""
-Copied from
-https://github.com/gyt1145028706/XY-Tokenizer/blob/master/xy_tokenizer/nn/feature_extractor.py
-
-"""
-
 import numpy as np
 import torch
 
