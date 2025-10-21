@@ -483,9 +483,107 @@ class ResBlock(nn.Module):
     def forward(self, x):
         return x + self.block(x)
 
-# class FrameStackDownConv(nn.Module):
+class FrameStackDownConv(nn.Module):
+    def __init__(self, in_dim=768, out_dim=32, stack_factor=4):
+        super().__init__()
+        self.stack_factor = stack_factor
+        stacked_dim = in_dim * self.stack_factor  # 3072
+        
+        # More gradual dimension reduction: 3072->1536->768->384->128->32
+        self.pre_conv = nn.Conv1d(stacked_dim, 1536, kernel_size=3, padding=1)
+        
+        self.down_stack = nn.Sequential(
+            ResBlock(1536, dilation=1),
+            nn.Conv1d(1536, 768, kernel_size=3, padding=1),
+            Snake1d(768),
+            
+            ResBlock(768, dilation=3),  
+            nn.Conv1d(768, 384, kernel_size=3, padding=1),
+            Snake1d(384),
+            
+            ResBlock(384, dilation=5),
+            nn.Conv1d(384, 128, kernel_size=3, padding=1), 
+            Snake1d(128),
+            
+            ResBlock(128, dilation=9),
+            nn.Conv1d(128, out_dim, kernel_size=3, padding=1),
+        )
+        
+        # Output layer norm for stability
+        self.output_norm = nn.LayerNorm(out_dim)
 
-# class UpConv(nn.Module):
+    def forward(self, x, input_length):
+        B, D, T = x.shape
+        output_length = (input_length + self.stack_factor - 1) // self.stack_factor
+        
+        # Frame stacking
+        T_padded = ((T + self.stack_factor - 1) // self.stack_factor) * self.stack_factor
+        if T < T_padded:
+            x = F.pad(x, (0, T_padded - T))
+        
+        x = rearrange(x, 'b d (t s) -> b (d s) t', s=self.stack_factor)
+        
+        # Downsampling
+        z = self.pre_conv(x)
+        z = self.down_stack(z)
+        
+        # Apply LayerNorm
+        z = rearrange(z, 'b d t -> b t d')
+        z = self.output_norm(z)
+        z = rearrange(z, 'b t d -> b d t')
+        
+        return z, output_length
+
+class UpConv(nn.Module):
+    def __init__(self, in_dim=32, out_dim=768, up_factor=4):
+        super().__init__()
+        if not (up_factor > 0 and (up_factor & (up_factor - 1)) == 0):
+            raise ValueError(f"up_factor must be a power of 2, got {up_factor}")
+        
+        self.up_factor = up_factor
+        self.in_dim = in_dim
+        self.out_dim = out_dim
+        
+        # Preprocessing + dimension expansion: 32->128->384->768
+        self.pre_conv = nn.Conv1d(in_dim, 128, kernel_size=3, padding=1)
+        
+        # First 2x upsampling stage: 128->384  
+        self.up_stage1 = nn.Sequential(
+            nn.Upsample(scale_factor=2, mode='nearest'),
+            nn.Conv1d(128, 384, kernel_size=3, padding=1),
+            ResBlock(384, dilation=1),
+            ResBlock(384, dilation=5)
+        )
+        
+        # Second 2x upsampling stage: 384->768
+        self.up_stage2 = nn.Sequential(
+            nn.Upsample(scale_factor=2, mode='nearest'), 
+            nn.Conv1d(384, 768, kernel_size=3, padding=1),
+            ResBlock(768, dilation=1),
+            ResBlock(768, dilation=3)
+        )
+        
+        # Final adjustment layer
+        self.final_conv = nn.Sequential(
+            Snake1d(768),
+            nn.Conv1d(768, out_dim, kernel_size=3, padding=1)
+        )
+
+    def forward(self, z_q, input_len=None):
+        # 32 -> 128
+        y = self.pre_conv(z_q)
+        
+        # 128 -> 384 (2x upsampling)
+        y = self.up_stage1(y)
+        
+        # 384 -> 768 (2x upsampling)  
+        y = self.up_stage2(y)
+        
+        # Final adjustment
+        y_out = self.final_conv(y)
+        
+        out_len = input_len * self.up_factor if input_len is not None else None
+        return y_out, out_len
 
 # Define Transformer encoder containing multiple Transformer layers for feature extraction and transformation
 class Transformer(nn.Module):
