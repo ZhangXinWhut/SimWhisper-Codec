@@ -16,34 +16,37 @@ from torch import nn, view_as_real, view_as_complex
 from torch import nn
 from torch.nn import functional as F
 from torch.nn.utils import weight_norm, remove_weight_norm
+from . import activations
+from .alias_free_torch import *
 from torchaudio.functional.functional import _hz_to_mel, _mel_to_hz
 from transformers.activations import ACT2FN
 from einops import rearrange
 
-@torch.jit.script
-def snake_core(x: torch.Tensor, alpha: torch.Tensor) -> torch.Tensor:
-    # x: [B, C, T]
-    return x + alpha.reciprocal() * torch.sin(alpha * x).pow(2)
+def init_weights(m):
+    if isinstance(m, nn.Conv1d):
+        nn.init.trunc_normal_(m.weight, std=0.02)
+        nn.init.constant_(m.bias, 0)
 
-class Snake1d(nn.Module):
-    def __init__(self, channels: int, alpha_init: float = 1.0, alpha_min: float = 1e-3):
+def WNConv1d(*args, **kwargs):
+    return weight_norm(nn.Conv1d(*args, **kwargs))
+
+
+def WNConvTranspose1d(*args, **kwargs):
+    return weight_norm(nn.ConvTranspose1d(*args, **kwargs))
+
+class ResidualUnit(nn.Module):
+    def __init__(self, dim: int = 16, dilation: int = 1):
         super().__init__()
-        # Keep per-channel parameter in-place: 1×C×1
-        self.alpha_raw = nn.Parameter(torch.full((1, channels, 1), float(alpha_init)))
-        self.alpha_min = alpha_min
+        pad = ((7 - 1) * dilation) // 2
+        self.block = nn.Sequential(
+            Activation1d(activation=activations.SnakeBeta(dim, alpha_logscale=True)),
+            WNConv1d(dim, dim, kernel_size=7, dilation=dilation, padding=pad),
+            Activation1d(activation=activations.SnakeBeta(dim, alpha_logscale=True)),
+            WNConv1d(dim, dim, kernel_size=1),
+        )
 
-    def _alpha(self) -> torch.Tensor:
-        # Positive parameterization to avoid alpha -> 0
-        return F.softplus(self.alpha_raw) + self.alpha_min
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        alpha = self._alpha()
-        # AMP compatible: compute in fp32 kernel then cast back
-        if x.dtype in (torch.float16, torch.bfloat16):
-            return snake_core(x.float(), alpha.float()).to(x.dtype)
-        return snake_core(x, alpha)
-
-
+    def forward(self, x):
+        return x + self.block(x)
 
 # Define function to generate positional embeddings using sine and cosine functions to represent sequence position information
 def sinusoids(length, channels, max_timescale=10000):
@@ -470,120 +473,165 @@ class OmniAudioDecoder(nn.Module):
         # Output shape: [bsz, num_mel_bins, seq_len]
         return output_features, output_length
 
-class ResBlock(nn.Module):
-    def __init__(self, dim, dilation=1):
-        super().__init__()
-        self.block = nn.Sequential(
-            Snake1d(dim),
-            nn.Conv1d(dim, dim, kernel_size=3, dilation=dilation, padding=dilation),
-            Snake1d(dim),
-            nn.Conv1d(dim, dim, kernel_size=1)
-        )
-
-    def forward(self, x):
-        return x + self.block(x)
-
 class FrameStackDownConv(nn.Module):
-    def __init__(self, in_dim=768, out_dim=32, stack_factor=4):
+    """
+    下采样模块：
+    - 时间：通过 frame stacking 做 4x 下采样 (T -> T/stack_factor)
+    - 通道：先从 D*stack_factor 压到 hidden_dim，再通过 ResidualUnit 提特征，最后到 latent_dim(32)
+    
+    Args:
+        in_dim:        输入通道数（例如 768，对应 Whisper encoder 输出维度）
+        latent_dim:    量化前的瓶颈维度（例如 32，对应 GroupFSQ 输入维度）
+        stack_factor:  帧堆叠因子（50Hz -> 12.5Hz 就用 4）
+        hidden_dim:    中间隐层通道数
+    """
+    def __init__(
+        self,
+        in_dim: int = 768,
+        latent_dim: int = 32,
+        stack_factor: int = 4,
+        hidden_dim: int = 256,
+        dilations = (1, 3, 9),
+    ):
         super().__init__()
-        self.stack_factor = stack_factor
-        stacked_dim = in_dim * self.stack_factor  # 3072
-        
-        # More gradual dimension reduction: 3072->1536->768->384->128->32
-        self.pre_conv = nn.Conv1d(stacked_dim, 1536, kernel_size=3, padding=1)
-        
-        self.down_stack = nn.Sequential(
-            ResBlock(1536, dilation=1),
-            nn.Conv1d(1536, 768, kernel_size=3, padding=1),
-            Snake1d(768),
-            
-            ResBlock(768, dilation=3),  
-            nn.Conv1d(768, 384, kernel_size=3, padding=1),
-            Snake1d(384),
-            
-            ResBlock(384, dilation=5),
-            nn.Conv1d(384, 128, kernel_size=3, padding=1), 
-            Snake1d(128),
-            
-            ResBlock(128, dilation=9),
-            nn.Conv1d(128, out_dim, kernel_size=3, padding=1),
-        )
-        
-        # Output layer norm for stability
-        self.output_norm = nn.LayerNorm(out_dim)
+        assert in_dim > 0
+        assert latent_dim > 0
+        assert stack_factor >= 1
 
-    def forward(self, x, input_length):
-        B, D, T = x.shape
-        output_length = (input_length + self.stack_factor - 1) // self.stack_factor
-        
-        # Frame stacking
-        T_padded = ((T + self.stack_factor - 1) // self.stack_factor) * self.stack_factor
-        if T < T_padded:
-            x = F.pad(x, (0, T_padded - T))
-        
-        x = rearrange(x, 'b d (t s) -> b (d s) t', s=self.stack_factor)
-        
-        # Downsampling
-        z = self.pre_conv(x)
-        z = self.down_stack(z)
-        
-        # Apply LayerNorm
-        z = rearrange(z, 'b d t -> b t d')
-        z = self.output_norm(z)
-        z = rearrange(z, 'b t d -> b d t')
-        
-        return z, output_length
-
-class UpConv(nn.Module):
-    def __init__(self, in_dim=32, out_dim=768, up_factor=4):
-        super().__init__()
-        if not (up_factor > 0 and (up_factor & (up_factor - 1)) == 0):
-            raise ValueError(f"up_factor must be a power of 2, got {up_factor}")
-        
-        self.up_factor = up_factor
         self.in_dim = in_dim
-        self.out_dim = out_dim
-        
-        # Preprocessing + dimension expansion: 32->128->384->768
-        self.pre_conv = nn.Conv1d(in_dim, 128, kernel_size=3, padding=1)
-        
-        # First 2x upsampling stage: 128->384  
-        self.up_stage1 = nn.Sequential(
-            nn.Upsample(scale_factor=2, mode='nearest'),
-            nn.Conv1d(128, 384, kernel_size=3, padding=1),
-            ResBlock(384, dilation=1),
-            ResBlock(384, dilation=5)
-        )
-        
-        # Second 2x upsampling stage: 384->768
-        self.up_stage2 = nn.Sequential(
-            nn.Upsample(scale_factor=2, mode='nearest'), 
-            nn.Conv1d(384, 768, kernel_size=3, padding=1),
-            ResBlock(768, dilation=1),
-            ResBlock(768, dilation=3)
-        )
-        
-        # Final adjustment layer
-        self.final_conv = nn.Sequential(
-            Snake1d(768),
-            nn.Conv1d(768, out_dim, kernel_size=3, padding=1)
-        )
+        self.latent_dim = latent_dim
+        self.stack_factor = stack_factor
+        self.hidden_dim = hidden_dim
 
-    def forward(self, z_q, input_len=None):
-        # 32 -> 128
-        y = self.pre_conv(z_q)
-        
-        # 128 -> 384 (2x upsampling)
-        y = self.up_stage1(y)
-        
-        # 384 -> 768 (2x upsampling)  
-        y = self.up_stage2(y)
-        
-        # Final adjustment
-        y_out = self.final_conv(y)
-        
-        out_len = input_len * self.up_factor if input_len is not None else None
-        return y_out, out_len
+        stacked_dim = in_dim * stack_factor
+
+        self.in_proj = WNConv1d(stacked_dim, hidden_dim, kernel_size=1)
+
+        blocks = []
+        for d in dilations:
+            blocks.append(ResidualUnit(hidden_dim, dilation=d))
+        self.res_blocks = nn.Sequential(*blocks)
+
+        self.to_latent = WNConv1d(hidden_dim, latent_dim, kernel_size=1)
+
+        self.reset_parameters()
+
+    def forward(self, x: torch.Tensor, input_length: torch.Tensor):
+        """
+        Args:
+            x:            [B, D_in, T_in]
+            input_length: [B] or scalar，表示 T_in（帧数）
+
+        Returns:
+            z:            [B, latent_dim, T_out]，T_out = ceil(T_in / stack_factor)
+            output_length:[B] or scalar，等于 ceil(input_length / stack_factor)
+        """
+        B, D, T = x.shape
+        s = self.stack_factor
+
+        # 计算输出长度
+        output_length = (input_length + s - 1) // s
+
+        # pad 为 stack_factor 的倍数，时间维 pad 在最后
+        T_padded = (T + s - 1) // s * s
+        if T_padded > T:
+            x = F.pad(x, (0, T_padded - T))  # (left, right) pad on time dim
+
+        # Frame stacking: [B, D, T_padded] -> [B, D * s, T_padded / s]
+        x = rearrange(x, 'b d (t s) -> b (d s) t', s=s)  # 这里的 t 就是 T_out（整数）
+
+        # 通道侧压缩 + 残差建模
+        h = self.in_proj(x)       # [B, hidden_dim, T_out]
+        h = self.res_blocks(h)    # [B, hidden_dim, T_out]
+
+        # 投影到 latent_dim（32），给 GroupFSQ
+        z = self.to_latent(h)     # [B, latent_dim, T_out]
+
+        return z, output_length
+    
+    def reset_parameters(self):
+        self.apply(init_weights)
+
+class FrameStackUpConv(nn.Module):
+    """
+    上采样模块：
+    - 输入：量化后的 latent [B, latent_dim, T_12_5]
+    - 通道：先从 latent_dim 撑回 hidden_dim，经过若干 ResidualUnit
+    - 时间：通过 1x1 conv 生成 out_dim * stack_factor 通道，再 unstack 回时间轴
+            [B, out_dim * s, T_12_5] -> [B, out_dim, T_50]
+
+    Args:
+        latent_dim:   与 Down 的 latent_dim 一致，比如 32
+        out_dim:      输出通道数（例如 768，后面再接 Whisper 对称 decoder / mel decoder）
+        stack_factor: 与 Down 的 stack_factor 一致（4）
+        hidden_dim:   中间隐层通道数
+    """
+    def __init__(
+        self,
+        latent_dim: int = 32,
+        out_dim: int = 768,
+        stack_factor: int = 4,
+        hidden_dim: int = 256,
+        dilations = (1, 3, 9),
+    ):
+        super().__init__()
+        assert latent_dim > 0
+        assert out_dim > 0
+        assert stack_factor >= 1
+
+        self.latent_dim = latent_dim
+        self.out_dim = out_dim
+        self.stack_factor = stack_factor
+        self.hidden_dim = hidden_dim
+
+        # 先从 32 撑回 hidden_dim
+        self.from_latent = WNConv1d(latent_dim, hidden_dim, kernel_size=1)
+
+        # 对称的 ResidualUnit 堆叠
+        blocks = []
+        for d in dilations:
+            blocks.append(ResidualUnit(hidden_dim, dilation=d))
+        self.res_blocks = nn.Sequential(*blocks)
+
+        # 生成 out_dim * stack_factor 通道，用于 unstack
+        self.to_stacked = WNConv1d(hidden_dim, out_dim * stack_factor, kernel_size=1)
+
+        self.reset_parameters()
+
+    def forward(self, z_q: torch.Tensor, input_len: torch.Tensor = None):
+        """
+        Args:
+            z_q:       [B, latent_dim, T_12_5] （量化后的 latent）
+            input_len: T_12_5（下采样长度），通常就是 Down 的 output_length；
+                       输出长度 = input_len * stack_factor
+
+        Returns:
+            y:         [B, out_dim, T_50]
+            out_len:   = input_len * stack_factor
+        """
+        s = self.stack_factor
+
+        # latent_dim -> hidden_dim
+        h = self.from_latent(z_q)   # [B, hidden_dim, T_12_5]
+
+        # 残差卷积建模
+        h = self.res_blocks(h)      # [B, hidden_dim, T_12_5]
+
+        # 生成 stacked 通道
+        h = self.to_stacked(h)      # [B, out_dim * s, T_12_5]
+
+        # unstack 到时间维：[B, out_dim * s, T_12_5] -> [B, out_dim, T_50]
+        y = rearrange(h, 'b (d s) t -> b d (t s)', s=s)
+
+        # 长度计算
+        out_len = None
+        if input_len is not None:
+            out_len = input_len * s
+
+        return y, out_len
+    
+    def reset_parameters(self):
+        self.apply(init_weights)
 
 # Define Transformer encoder containing multiple Transformer layers for feature extraction and transformation
 class Transformer(nn.Module):

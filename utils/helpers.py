@@ -3,7 +3,6 @@ import torchaudio
 import os
 import sys
 import glob
-import debugpy
 import torch
 import numpy as np
 import re
@@ -75,13 +74,6 @@ def set_logging(level="INFO"):
         format=f"%(asctime)s [RANK {rank}] (%(module)s:%(lineno)d) %(levelname)s : %(message)s",
     )
     
-def waiting_for_debug(ip, port):
-    rank = os.environ.get("RANK", "0")
-    debugpy.listen((ip, port)) # Replace localhost with cluster node IP
-    logging.info(f"[rank = {rank}] Waiting for debugger attach...")
-    debugpy.wait_for_client()
-    logging.info(f"[rank = {rank}] Debugger attached")
-    
 def load_audio(audio_path, target_sample_rate):
     # Load audio file, wav shape: (channels, time)
     wav, raw_sample_rate = torchaudio.load(audio_path)
@@ -118,36 +110,100 @@ def find_audio_files(input_dir):
     logging.info(f"Found {len(audios_input)} audio files in {input_dir}")
     return sorted(audios_input)
 
-class DistributedWeightedRandomSampler(Sampler):
-    def __init__(self, weights: List[float], num_samples_per_epoch: int, 
-                 num_replicas: int, rank: int, replacement: bool = True):
+class DistributedWeightedSamplerWrapper(Sampler):
+    """
+    分布式加权采样器包装器
+    
+    核心逻辑：
+    1. 在每个epoch开始时，全局生成 (batch_size * steps * world_size) 个加权采样索引
+    2. 使用相同的随机种子确保各GPU生成相同的全局索引序列
+    3. 每个GPU从全局索引序列中取自己的部分
+    """
+    def __init__(
+        self, 
+        dataset, 
+        weights,  # 直接传入weights，而不是weighted_sampler
+        batch_size: int,
+        steps_per_epoch: int,  # 每个GPU的步数
+        num_replicas: int, 
+        rank: int,
+        replacement: bool = True,
+        seed: int = 0
+    ):
+        """
+        Args:
+            dataset: 数据集
+            weights: 样本权重列表或tensor
+            batch_size: 每个GPU的batch_size
+            steps_per_epoch: 每个GPU的步数（如2000）
+            num_replicas: GPU数量
+            rank: 当前GPU的rank
+            replacement: 是否有放回采样
+            seed: 随机种子
+        """
+        self.dataset = dataset
         self.num_replicas = num_replicas
         self.rank = rank
-        self.epoch = 0 # Track the current epoch
-        self.num_samples_per_replica = num_samples_per_epoch // self.num_replicas
-        self.num_samples_per_epoch = self.num_samples_per_replica * self.num_replicas
-        self.weights = torch.as_tensor(weights, dtype=torch.double)
+        self.epoch = 0
+        self.seed = seed
         self.replacement = replacement
-
+        
+        # 转换权重为tensor
+        self.weights = torch.as_tensor(weights, dtype=torch.double)
+        
+        # 计算采样数量
+        # 每个GPU需要的样本数
+        self.num_samples_per_replica = batch_size * steps_per_epoch
+        # 全局总样本数
+        self.total_size = self.num_samples_per_replica * num_replicas
+        
     def __iter__(self) -> Iterator[int]:
-        # Key: re-sample at the beginning of each iteration (epoch)
-        # 1. Use the current epoch as seed so all processes generate the same random sequence for the epoch
+        """
+        每次迭代时重新生成加权采样索引
+        """
+        # 使用 epoch + seed 生成随机数生成器，确保：
+        # 1. 不同epoch有不同的采样结果
+        # 2. 同一epoch内各GPU生成相同的全局索引序列
         g = torch.Generator()
-        g.manual_seed(self.epoch)
-
-        # 2. Generate a full weighted sampling index list (identical across processes)
-        full_indices = torch.multinomial(self.weights, self.num_samples_per_epoch, 
-                                         self.replacement, generator=g).tolist()
+        g.manual_seed(self.seed + self.epoch)
         
-        # 3. Extract the subset of indices that belong to this process
-        indices_for_this_replica = full_indices[self.rank : self.num_samples_per_epoch : self.num_replicas]
+        # 全局加权采样
+        if self.replacement:
+            # 有放回采样：生成全局索引
+            indices = torch.multinomial(
+                self.weights, 
+                self.total_size, 
+                replacement=True,
+                generator=g
+            ).tolist()
+        else:
+            # 无放回采样：需要特殊处理
+            indices = torch.multinomial(
+                self.weights,
+                min(len(self.weights), self.total_size),
+                replacement=False,
+                generator=g
+            ).tolist()
+            # padding if needed
+            if len(indices) < self.total_size:
+                indices += indices[:(self.total_size - len(indices))]
         
-        return iter(indices_for_this_replica)
-
+        # 当前GPU从全局索引中取自己的部分
+        # rank=0: [0, 2, 4, 6, ...]
+        # rank=1: [1, 3, 5, 7, ...]
+        indices = indices[self.rank:self.total_size:self.num_replicas]
+        assert len(indices) == self.num_samples_per_replica, \
+            f"Expected {self.num_samples_per_replica} samples, got {len(indices)}"
+        
+        return iter(indices)
+    
     def __len__(self) -> int:
         return self.num_samples_per_replica
-
+    
     def set_epoch(self, epoch: int) -> None:
+        """
+        设置当前epoch，影响随机数生成
+        """
         self.epoch = epoch
 
 def filter_dataset_by_duration(entries: List[Dict[str, Any]], min_duration: float, max_duration: float):

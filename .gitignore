@@ -1,5 +1,8 @@
 audiocodec/trainer/
-config/
+config/train.yaml
 scripts/
 audiocodec/discriminators.py
 .DS_Store
+utils/create_librispeech_manifest.py
+utils/create_ljspeech_manifest.py
+utils/create_thchs30_manifest.py

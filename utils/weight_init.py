@@ -8,25 +8,47 @@ import torch
 from transformers import WhisperModel
 
 
-def load_whisper_weights(encoder, whisper_model_name="openai/whisper-small", verbose=False, is_acoustic=False):
+def load_whisper_weights(encoder, whisper_model_name="openai/whisper-small", verbose=False, is_acoustic=False, local_files_only=False):
     """
     Load pretrained Whisper encoder weights into SimWhisper encoder.
     Skips positional embeddings since both use sinusoidal embeddings.
+
     Args:
         encoder: SimWhisper encoder instance
-        whisper_model_name: Pretrained Whisper model name
+        whisper_model_name: Pretrained Whisper model name or local path
         verbose: Print loading progress
         is_acoustic: Whether this is the acoustic encoder (with modifications)
-    
+        local_files_only: If True, only load from local files/cache, don't download
+
     Returns:
         encoder: Encoder with loaded Whisper weights
     """
     if verbose:
         print(f"Loading Whisper weights from {whisper_model_name}...")
-    
+        if local_files_only:
+            print("  Using local files only (no downloads)")
+
     # Load Whisper model
-    whisper_model = WhisperModel.from_pretrained(whisper_model_name)
-    whisper_encoder = whisper_model.encoder
+    # 支持本地路径和 Hugging Face 模型名称
+    try:
+        whisper_model = WhisperModel.from_pretrained(
+            whisper_model_name,
+            local_files_only=local_files_only
+        )
+        whisper_encoder = whisper_model.encoder
+    except Exception as e:
+        if "local_files_only" in str(e) and not local_files_only:
+            print(f"Failed to load from {whisper_model_name}, trying with local_files_only=True...")
+            try:
+                whisper_model = WhisperModel.from_pretrained(
+                    whisper_model_name,
+                    local_files_only=True
+                )
+                whisper_encoder = whisper_model.encoder
+            except Exception as e2:
+                raise RuntimeError(f"Failed to load Whisper model from {whisper_model_name}: {e2}")
+        else:
+            raise RuntimeError(f"Failed to load Whisper model from {whisper_model_name}: {e}")
     
     # Get state dictionaries
     state_dict = encoder.state_dict()
