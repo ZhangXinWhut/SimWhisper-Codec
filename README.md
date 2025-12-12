@@ -6,6 +6,9 @@
 
 <p align="center">
   <img src="docs/assets/SimWhisper-Codec.png" width="80%" alt="SimWhisper-Codec Architecture">
+</p>
+
+<p>
   <a href="https://zhangxinwhut.github.io/SimWhisper-Codec/"><img src="https://img.shields.io/badge/🎧_Demo-Online-brightgreen" alt="Demo"></a>
   <a href="https://arxiv.org/pdf/2510.20504"><img src="https://img.shields.io/badge/Paper-Arxiv-red" alt="paper"></a>
   <a href="https://huggingface.co/xxx123456/SimWhisper_Codec"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Model%20Page-yellow" alt="Hugging Face"></a>
@@ -30,7 +33,7 @@
 |:------|:-------:|:-----:|:---------:|:---------:|:------:|:-----:|:-------:|
 | XCodec2.0 | 0.8 kbps | 2.61 | 3.04 | 2.43 | 0.92 | 0.82 | **4.13** |
 | XY-Tokenizer | 1.0 kbps | **2.46** | 3.00 | 2.41 | 0.91 | **0.84** | 3.98 |
-| **SimWhisper-Codec** | **1.1 kbps** | 2.75 | **3.29** | **2.72** | **0.93** | 0.83 | 4.00 |
+| **SimWhisper-Codec** | 1.1 kbps | 2.75 | **3.29** | **2.72** | **0.93** | 0.83 | 4.00 |
 
 *Evaluated on LibriSpeech test-clean*
 
