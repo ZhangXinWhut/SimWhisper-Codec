@@ -94,3 +94,5 @@ If you find this work useful in your research, please cite our paper:
       url={https://arxiv.org/abs/2510.20504}, 
 }
 ```
+## 📜 License
+This project is licensed under the Apache 2.0 License.
