@@ -19,11 +19,6 @@ except ImportError:
     import librosa
     soundfile = None
 
-
-# ============================================================================
-# WER 计算相关函数 (来自 calculate_wer2.py)
-# ============================================================================
-
 remove_tag = True
 spacelist = [' ', '\t', '\r', '\n']
 puncts = [
