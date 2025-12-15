@@ -24,10 +24,13 @@
 
 - 🚀 **low Bitrate**: Only **1.1 kbps** at 16 kHz sampling rate
 - 🔊 **High Quality Speech Reconstruction**: Achieving UTMOS 4.00 WER 2.75 (hubert-large-ls960-ft) sim 0.83 (wavlm_large_finetune) stoi 0.93 pesq-nb 3.29 pesq-wb 2.72 on librispeech-test-clean reconstruction (gt: WER 2.16 UTMOS 4.09)
+- 🌍 **Strong Generalization**: Trained only on LibriSpeech, yet performs well on out-of-domain data (LJSpeech, THCHS30)
 - 🧊 **Frozen Encoder**: No fine-tuning of Whisper encoder required
 - ⚡ **Simple & Efficient**: Architectural simplification over complex supervision
 
 ## 📊 Performance
+
+### In-Domain Evaluation (LibriSpeech test-clean)
 
 | Model | Bitrate | WER ↓ | PESQ-NB ↑ | PESQ-WB ↑ | STOI ↑ | SIM ↑ | UTMOS ↑ |
 |:------|:-------:|:-----:|:---------:|:---------:|:------:|:-----:|:-------:|
@@ -35,7 +38,14 @@
 | XY-Tokenizer | 1.0 kbps | **2.46** | 3.00 | 2.41 | 0.91 | **0.84** | 3.98 |
 | **SimWhisper-Codec** | 1.1 kbps | 2.75 | **3.29** | **2.72** | **0.93** | 0.83 | 4.00 |
 
-*Evaluated on LibriSpeech test-clean*
+### Out-of-Domain Generalization
+
+| Dataset | Language | Samples | PESQ-WB ↑ | PESQ-NB ↑ | STOI ↑ |
+|:--------|:--------:|:-------:|:---------:|:---------:|:------:|
+| LJSpeech | English | 2,620 | 2.79 | 3.30 | 0.94 |
+| THCHS-30 | Chinese | test set | 2.63 | 3.21 | 0.91 |
+
+*SimWhisper-Codec is trained exclusively on LibriSpeech, demonstrating strong cross-lingual generalization.*
 
 ## 🚀 Quick Start
 
