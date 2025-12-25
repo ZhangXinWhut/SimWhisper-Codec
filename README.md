@@ -42,6 +42,78 @@
 ### Out-of-Domain Generalization
 
 *Evaluation on Seed-TTS-Eval Dataset*
+<table>
+  <thead>
+    <tr>
+      <th align="center">Model</th>
+      <th align="center">Bitrate</th>
+      <th align="center" colspan="4">SEED-ZH</th>
+      <th align="center" colspan="4">SEED-EN</th>
+    </tr>
+    <tr>
+      <th></th>
+      <th></th>
+      <th align="center">PESQ-NB ↑</th>
+      <th align="center">PESQ-WB ↑</th>
+      <th align="center">SIM ↑</th>
+      <th align="center">STOI ↑</th>
+      <th align="center">PESQ-NB ↑</th>
+      <th align="center">PESQ-WB ↑</th>
+      <th align="center">SIM ↑</th>
+      <th align="center">STOI ↑</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>XCodec2.0</td>
+      <td align="center">0.8 kbps</td>
+      <td align="center">2.69</td>
+      <td align="center">2.10</td>
+      <td align="center">0.81</td>
+      <td align="center">0.89</td>
+      <td align="center">2.57</td>
+      <td align="center">2.01</td>
+      <td align="center">0.78</td>
+      <td align="center">0.89</td>
+    </tr>
+    <tr>
+      <td>XY-Tokenizer</td>
+      <td align="center">1.0 kbps</td>
+      <td align="center">2.88</td>
+      <td align="center">2.24</td>
+      <td align="center"><b>0.87</b></td>
+      <td align="center">0.90</td>
+      <td align="center">2.69</td>
+      <td align="center">2.14</td>
+      <td align="center"><b>0.82</b></td>
+      <td align="center">0.90</td>
+    </tr>
+    <tr>
+      <td>BigCodec</td>
+      <td align="center">1.04 kbps</td>
+      <td align="center">2.88</td>
+      <td align="center">2.26</td>
+      <td align="center">0.80</td>
+      <td align="center"><b>0.91</b></td>
+      <td align="center">2.80</td>
+      <td align="center">2.22</td>
+      <td align="center">0.80</td>
+      <td align="center"><b>0.91</b></td>
+    </tr>
+    <tr>
+      <td><b>SimWhisper-Codec</b></td>
+      <td align="center">1.1 kbps</td>
+      <td align="center"><b>3.30</b></td>
+      <td align="center"><b>2.38</b></td>
+      <td align="center">0.82</td>
+      <td align="center"><b>0.91</b></td>
+      <td align="center"><b>2.88</b></td>
+      <td align="center"><b>2.29</b></td>
+      <td align="center">0.80</td>
+      <td align="center"><b>0.91</b></td>
+    </tr>
+  </tbody>
+</table>
 
 | Model | Bitrate | SEED-ZH |  |  |  | SEED-EN |  |  |  |
 |:------|:-------:|:-------:|:-------:|:-------:|:-------:|:-------:|:-------:|:-------:|:-------:|
