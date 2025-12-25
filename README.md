@@ -35,8 +35,8 @@
 | Model | Bitrate | WER ↓ | PESQ-NB ↑ | PESQ-WB ↑ | STOI ↑ | SIM ↑ | UTMOS ↑ |
 |:------|:-------:|:-----:|:---------:|:---------:|:------:|:-----:|:-------:|
 | XCodec2.0 | 0.8 kbps | 2.61 | 3.04 | 2.43 | 0.92 | 0.82 | **4.13** |
-| XY-Tokenizer | 1.0 kbps | **2.46** | 3.00 | 2.41 | 0.91 | **0.84** | 3.98 |
-| BigCodec | 1.04 kbps | 2.92 | 3.27 | 2.68 | **0.93** | **0.84** | 4.11 |
+| XY-Tokenizer | 1.0 kbps | **2.46** | 3.10 | 2.50 | 0.92 | **0.85** | 4.03 |
+| BigCodec | 1.04 kbps | 2.92 | 3.27 | 2.68 | **0.93** | 0.84 | 4.11 |
 | **SimWhisper-Codec** | 1.1 kbps | 2.75 | **3.29** | **2.72** | **0.93** | 0.83 | 4.00 |
 
 ### Out-of-Domain Generalization
@@ -79,12 +79,12 @@
     <tr>
       <td>XY-Tokenizer</td>
       <td align="center">1.0 kbps</td>
-      <td align="center">2.88</td>
-      <td align="center">2.24</td>
-      <td align="center"><b>0.87</b></td>
+      <td align="center">2.97</td>
+      <td align="center">2.32</td>
+      <td align="center"><b>0.88</b></td>
       <td align="center">0.90</td>
-      <td align="center">2.69</td>
-      <td align="center">2.14</td>
+      <td align="center">2.75</td>
+      <td align="center">2.18</td>
       <td align="center"><b>0.82</b></td>
       <td align="center">0.90</td>
     </tr>
